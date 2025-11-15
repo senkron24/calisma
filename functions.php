@@ -188,18 +188,32 @@ function updatePanel()
     // Mevcut panel versiyonunu al
     $currentVersion = isset($rAdminSettings["panel_version"]) ? $rAdminSettings["panel_version"] : "0";
     
-    // JSON bilgisini al
-    $rURL = "http://xcodes.lifejoy.sbs:88/XCodes/current.json";
+    // JSON bilgisini al (HTTPS'e geçirildi)
+    $rURL = "https://secure-update-server.com/XCodes/current.json"; // Güvenli sunucu adresi ile değiştirin
     $rData = json_decode(file_get_contents($rURL), true);
     
     // Eğer yeni version varsa ve mevcut versiyondan farklıysa
-    if ($rData["version"] && $rData["version"] != $currentVersion) {
+    if ($rData["version"] && $rData["version"] != $currentVersion && isset($rData["hash"])) {
         $rFileData = file_get_contents("/home/xtreamcodes/iptv_xtream_codes/pytools/autoupdate.py");
         if (stripos($rFileData, "# update panel") !== false) {
             $rFilePath = "/tmp/autoupdate.py";
             file_put_contents($rFilePath, $rFileData);
             exec("sudo chmod 777 " . $rFilePath);
             if (file_get_contents($rFilePath) == $rFileData) {
+
+                // Versiyona özel güncelleme paketi indir (HTTPS'e geçirildi)
+                $update_url = "https://secure-update-server.com/XCodes/update_".$rData["version"].".zip"; // Güvenli sunucu adresi
+                $update_file_path = "/tmp/update.zip";
+                file_put_contents($update_file_path, file_get_contents($update_url));
+
+                // İndirilen dosyanın hash'ini doğrula
+                if (hash_file('sha256', $update_file_path) !== $rData["hash"]) {
+                    // Hash uyuşmazsa işlemi iptal et ve logla
+                    unlink($update_file_path);
+                    error_log("Update failed: Hash mismatch for version " . $rData["version"]);
+                    return false;
+                }
+
                 // Panel versiyonunu güncelle
                 $rAdminSettings["panel_version"] = $rData["version"];
                 writeAdminSettings();
@@ -208,9 +222,6 @@ function updatePanel()
                 exec("rm /usr/bin/ffmpeg");
                 exec("rm /usr/bin/ffprobe");
                 exec("chattr -i /home/xtreamcodes/iptv_xtream_codes/GeoLite2.mmdb");
-                
-                // Versiyona özel güncelleme paketi indir
-                exec("wget \"http://xcodes.lifejoy.sbs:88/XCodes/update_".$rData["version"].".zip\" -O /tmp/update.zip -o /dev/null");
                 
                 exec("unzip /tmp/update.zip -d /tmp/update/ >/dev/null");
                 exec("rm -rf /home/xtreamcodes/iptv_xtream_codes/crons");
